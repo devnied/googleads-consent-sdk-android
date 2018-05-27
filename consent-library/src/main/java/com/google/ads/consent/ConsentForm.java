@@ -323,10 +323,6 @@ public class ConsentForm {
             } catch (IOException e) {
                 listener.onConsentFormError("Cannot read assets.");
                 return;
-            } finally {
-                if (am != null) {
-                    am.close();
-                }
             }
         }
         this.webView.loadUrl(url);
