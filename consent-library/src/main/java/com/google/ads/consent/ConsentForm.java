@@ -20,6 +20,7 @@ import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -36,19 +37,28 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import com.google.gson.Gson;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.URL;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * A Google rendered form for collecting consent from a user.
  */
 public class ConsentForm {
 
+    private static final String ANDROID_ASSET_PATH = "file:///android_asset/";
+
     private final ConsentFormListener listener;
     private final Context context;
     private final boolean personalizedAdsOption;
     private final boolean nonPersonalizedAdsOption;
     private final boolean adFreeOption;
+    private final String path;
+    private final String filename;
+    private final String extension;
     private final URL appPrivacyPolicyURL;
     private final Dialog dialog;
     private final WebView webView;
@@ -73,6 +83,9 @@ public class ConsentForm {
         this.nonPersonalizedAdsOption = builder.nonPersonalizedAdsOption;
         this.adFreeOption = builder.adFreeOption;
         this.appPrivacyPolicyURL = builder.appPrivacyPolicyURL;
+        this.path = builder.path;
+        this.extension = builder.extension;
+        this.filename = builder.filename;
         this.dialog = new Dialog(context);
         this.loadState = LoadState.NOT_READY;
 
@@ -170,6 +183,9 @@ public class ConsentForm {
         private boolean nonPersonalizedAdsOption;
         private boolean adFreeOption;
         private final URL appPrivacyPolicyURL;
+        private String path = ANDROID_ASSET_PATH;
+        private String filename = "consentform";
+        private String extension = ".html";
 
         public Builder(Context context, URL appPrivacyPolicyURL) {
             this.context = context;
@@ -201,6 +217,21 @@ public class ConsentForm {
 
         public Builder withAdFreeOption() {
             this.adFreeOption = true;
+            return this;
+        }
+
+        public Builder filename(String filename) {
+            this.filename = filename;
+            return this;
+        }
+
+        public Builder extension(String extension) {
+            this.extension = extension;
+            return this;
+        }
+
+        public Builder path(String path) {
+            this.path = path;
             return this;
         }
 
@@ -257,6 +288,10 @@ public class ConsentForm {
     }
 
     public void load() {
+        load(Locale.getDefault());
+    }
+
+    public void load(Locale locale) {
         if (this.loadState == LoadState.LOADING) {
             listener.onConsentFormError("Cannot simultaneously load multiple consent forms.");
             return;
@@ -268,7 +303,33 @@ public class ConsentForm {
         }
 
         this.loadState = LoadState.LOADING;
-        this.webView.loadUrl("file:///android_asset/consentform.html");
+        String url = path;
+        if (url.startsWith(ANDROID_ASSET_PATH)) {
+            AssetManager am = context.getAssets();
+            try {
+                List<String> mapList = Arrays.asList(am.list(""));
+                String assetName = String.format("%s-%s_%s%s", filename, locale.getISO3Language(), locale.getISO3Country(), extension);
+                if(!mapList.contains(assetName)){
+                    assetName = String.format("%s-%s%s", filename, locale.getISO3Language(), extension);
+                    if(!mapList.contains(assetName)){
+                        assetName = String.format("%s%s", filename, extension);
+                        if(!mapList.contains(assetName)){
+                            listener.onConsentFormError("Cannot find consent form file.");
+                            return;
+                        }
+                    }
+                }
+                url = url + assetName;
+            } catch (IOException e) {
+                listener.onConsentFormError("Cannot read assets.");
+                return;
+            } finally {
+                if (am != null) {
+                    am.close();
+                }
+            }
+        }
+        this.webView.loadUrl(url);
     }
 
     private void handleLoadComplete(String status) {
